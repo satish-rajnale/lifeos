@@ -1,0 +1,12 @@
+{
+    "name": "speech-recognition",
+    "version": "1.0.0",
+    "description": "Native speech recognition for lifeos",
+    "author": "satish",
+    "license": "MIT",
+    "homepage": "https://github.com/satish/lifeos",
+    "main": "index.ts",
+    "dependencies": {
+        "expo-modules-core": "*"
+    }
+}
