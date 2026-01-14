@@ -1,0 +1,20 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+group = 'expo.modules.speechrecognition'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.speechrecognition"
+  compileSdkVersion 34
+
+  defaultConfig {
+    minSdkVersion 21
+    targetSdkVersion 34
+  }
+}
+
+dependencies {
+  implementation project(':expo-modules-core')
+  implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0"
+}
