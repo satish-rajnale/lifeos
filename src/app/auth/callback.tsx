@@ -90,6 +90,18 @@ export default function AuthCallback() {
                     if (data?.session?.user) {
                         console.log('✅ Session established successfully:', data.session.user.id)
                         console.log('💾 Session persisted to AsyncStorage')
+                        
+                        // Log access token for testing edge functions
+                        console.log('\n🔑 ===== USER ACCESS TOKEN (for testing) =====')
+                        console.log(data.session.access_token)
+                        console.log('============================================\n')
+                        console.log('💡 Use this token to test edge functions:')
+                        console.log('   curl -X POST "https://your-project.supabase.co/functions/v1/generate-journal-tts" \\')
+                        console.log(`     -H "Authorization: Bearer ${data.session.access_token}" \\`)
+                        console.log('     -H "Content-Type: application/json" \\')
+                        console.log('     -d \'{"date":"2026-01-15"}\'')
+                        console.log('============================================\n')
+                        
                         await handleOAuthSuccess(data.session.user)
                         return
                     }
@@ -101,6 +113,18 @@ export default function AuthCallback() {
                 
                 if (session?.user) {
                     console.log('✅ Found existing session for user:', session.user.id)
+                    
+                    // Log access token for testing edge functions
+                    console.log('\n🔑 ===== USER ACCESS TOKEN (for testing) =====')
+                    console.log(session.access_token)
+                    console.log('============================================\n')
+                    console.log('💡 Use this token to test edge functions:')
+                    console.log('   curl -X POST "https://your-project.supabase.co/functions/v1/generate-journal-tts" \\')
+                    console.log(`     -H "Authorization: Bearer ${session.access_token}" \\`)
+                    console.log('     -H "Content-Type: application/json" \\')
+                    console.log('     -d \'{"date":"2026-01-15"}\'')
+                    console.log('============================================\n')
+                    
                     await handleOAuthSuccess(session.user)
                     return
                 }

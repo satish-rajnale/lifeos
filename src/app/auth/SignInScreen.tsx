@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { supabase } from '../../services/supabase/client'
+import { useUserStore } from '../../state/userStore'
 import { THEME } from '../../utils/constants'
 
 // Required for OAuth flow to work on some platforms
@@ -10,10 +11,19 @@ WebBrowser.maybeCompleteAuthSession()
 
 export default function SignInScreen() {
     const router = useRouter()
+    const { session } = useUserStore()
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+
+    // Redirect to journal if user is already logged in
+    useEffect(() => {
+        if (session?.user) {
+            console.log('👤 User already logged in, redirecting to journal...')
+            router.replace('/journal/DailyJournalScreen')
+        }
+    }, [session])
 
     const getRedirectUrl = () => {
         const redirectUrl = 'lifeos://auth/callback';
@@ -23,8 +33,21 @@ export default function SignInScreen() {
 
     const handleSignIn = async () => {
         setLoading(true)
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) Alert.alert('Error', error.message)
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) {
+            Alert.alert('Error', error.message)
+        } else if (data?.session) {
+            // Log access token for testing edge functions
+            console.log('\n🔑 ===== USER ACCESS TOKEN (for testing) =====')
+            console.log(data.session.access_token)
+            console.log('============================================\n')
+            console.log('💡 Use this token to test edge functions:')
+            console.log('   curl -X POST "https://your-project.supabase.co/functions/v1/generate-journal-tts" \\')
+            console.log(`     -H "Authorization: Bearer ${data.session.access_token}" \\`)
+            console.log('     -H "Content-Type: application/json" \\')
+            console.log('     -d \'{"date":"2026-01-15"}\'')
+            console.log('============================================\n')
+        }
         setLoading(false)
     }
 

@@ -7,6 +7,8 @@ import { useJournalStore } from '../../state/journalStore'
 import { THEME } from '../../utils/constants'
 import { VoiceCaptureModal } from '../voice/VoiceCaptureModal'
 import { useTextToSpeech } from '../voice/useTextToSpeech'
+import { generateWeeklyJournalTTS, getWeeklySummary } from '../../services/supabase/edge-functions/generateJournalTTS'
+import { supabase } from '../../services/supabase/client'
 
 const getTodayDate = () => new Date().toISOString().split('T')[0]
 
@@ -20,6 +22,8 @@ export default function DailyJournalScreen() {
     const [modalVisible, setModalVisible] = useState(false)
     const [hasPermissions, setHasPermissions] = useState(false)
     const [permissionsChecked, setPermissionsChecked] = useState(false)
+    const [generatingAudio, setGeneratingAudio] = useState(false)
+    const [weeklySummary, setWeeklySummary] = useState<any>(null)
     
     const { isSpeaking, speak, stop } = useTextToSpeech()
 
@@ -34,7 +38,34 @@ export default function DailyJournalScreen() {
         fetchJournal(date)
         fetchCredits()
         requestPermissions()
+        loadDailySummary()
+        logAccessToken()
     }, [])
+
+    const logAccessToken = async () => {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.access_token) {
+            console.log('\n🔑 ===== USER ACCESS TOKEN (for testing) =====')
+            console.log(session.access_token)
+            console.log('============================================\n')
+            console.log('💡 Copy this token to test edge functions in terminal:')
+            console.log(`export TOKEN="${session.access_token}"`)
+            console.log('curl -X POST "YOUR_SUPABASE_URL/functions/v1/generate-journal-tts" \\')
+            console.log('  -H "Authorization: Bearer $TOKEN" \\')
+            console.log('  -H "Content-Type: application/json" \\')
+            console.log(`  -d '{"date":"${date}"}'`)
+            console.log('============================================\n')
+        }
+    }
+
+    const loadDailySummary = async () => {
+        try {
+            const summary = await getDailySummary(date)
+            setDailySummary(summary)
+        } catch (error) {
+            console.log('No daily summary found yet')
+        }
+    }
 
     const requestPermissions = async () => {
         try {
@@ -102,9 +133,39 @@ export default function DailyJournalScreen() {
         if (isSpeaking) {
             await stop()
         } else {
-            // If there's a journal entry, read the summary, otherwise read demo text
-            const textToSpeak = currentEntry?.day_summary || demoText
+            // Priority: Weekly AI summary > journal entry summary > demo text
+            const textToSpeak = weeklySummary?.summary_text || currentEntry?.day_summary || demoText
             await speak(textToSpeak, { pitch: 1.0, rate: 0.9 })
+        }
+    }
+
+    const handleGenerateWeeklySummary = async () => {
+        setGeneratingAudio(true)
+        
+        try {
+            console.log('🎙️ Generating weekly AI audio summary...')
+            const result = await generateWeeklyJournalTTS()
+
+            if (result.status === 'success') {
+                Alert.alert(
+                    'Weekly Summary Generated! 🎉',
+                    `Your personalized weekly reflection is ready! It covers ${result.days_included} days from your journal.\n\nTap the speaker button to listen.`,
+                    [{ text: 'Listen Now', onPress: () => handleTextToSpeech() }]
+                )
+                await loadWeeklySummary() // Reload to get the new summary
+            } else if (result.status === 'empty') {
+                Alert.alert(
+                    'No Entries This Week', 
+                    'You need at least one journal entry from the past 7 days to generate a weekly summary.'
+                )
+            } else {
+                Alert.alert('Generation Failed', result.error || 'Failed to generate weekly summary.')
+            }
+        } catch (error: any) {
+            console.error('❌ Weekly audio generation error:', error)
+            Alert.alert('Error', 'Failed to generate weekly summary. Please try again.')
+        } finally {
+            setGeneratingAudio(false)
         }
     }
 
@@ -168,8 +229,47 @@ export default function DailyJournalScreen() {
                     </View>
                 )}
 
+                {/* Weekly AI Summary Section */}
+                <View style={styles.weeklySummarySection}>
+                    {!weeklySummary ? (
+                        <TouchableOpacity 
+                            style={styles.generateWeeklyButton}
+                            onPress={handleGenerateWeeklySummary}
+                            disabled={generatingAudio}
+                        >
+                            {generatingAudio ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                                <Volume2 size={20} color="#fff" />
+                            )}
+                            <Text style={styles.generateWeeklyText}>
+                                {generatingAudio ? 'Generating Your Week in Review...' : '🎙️ Generate My Week in Review'}
+                            </Text>
+                        </TouchableOpacity>
+                    ) : (
+                        <View style={styles.weeklySummaryCard}>
+                            <View style={styles.weeklySummaryHeader}>
+                                <Volume2 size={20} color={THEME.colors.success} />
+                                <Text style={styles.weeklySummaryTitle}>Your Week in Review Ready!</Text>
+                            </View>
+                            <Text style={styles.weeklySummaryMeta}>
+                                {weeklySummary.stats?.days_journaled} days journaled • {weeklySummary.stats?.dominant_mood}
+                            </Text>
+                            <TouchableOpacity 
+                                style={styles.playWeeklyButton}
+                                onPress={handleTextToSpeech}
+                            >
+                                <Text style={styles.playWeeklyText}>
+                                    {isSpeaking ? '⏸️ Pause' : '▶️ Play Weekly Summary'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+                </View>
+
                 {hasEntry && (
                     <View style={styles.journalCard}>
+
                         <View style={styles.summarySection}>
                             <Text style={styles.sectionTitle}>Summary</Text>
                             <Text style={styles.summaryText}>{currentEntry.day_summary}</Text>
@@ -250,6 +350,63 @@ const styles = StyleSheet.create({
     ttsButtonActive: {
         backgroundColor: 'rgba(239, 68, 68, 0.1)',
         borderColor: THEME.colors.danger,
+    },
+    weeklySummarySection: {
+        marginBottom: THEME.spacing.lg,
+    },
+    generateWeeklyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: THEME.colors.primary,
+        borderRadius: THEME.borderRadius.lg,
+        padding: THEME.spacing.md,
+        gap: 12,
+        elevation: 4,
+        shadowColor: THEME.colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+    },
+    generateWeeklyText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    weeklySummaryCard: {
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        borderWidth: 2,
+        borderColor: THEME.colors.success,
+        borderRadius: THEME.borderRadius.lg,
+        padding: THEME.spacing.md,
+    },
+    weeklySummaryHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: THEME.spacing.xs,
+    },
+    weeklySummaryTitle: {
+        color: THEME.colors.success,
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    weeklySummaryMeta: {
+        color: THEME.colors.textSecondary,
+        fontSize: 12,
+        marginBottom: THEME.spacing.sm,
+    },
+    playWeeklyButton: {
+        backgroundColor: THEME.colors.success,
+        borderRadius: THEME.borderRadius.md,
+        padding: THEME.spacing.sm,
+        alignItems: 'center',
+        marginTop: THEME.spacing.xs,
+    },
+    playWeeklyText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
     },
     greeting: {
         color: THEME.colors.textSecondary,

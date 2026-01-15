@@ -34,7 +34,14 @@ export const useUserStore = create<UserState>((set, get) => ({
         }
     },
     signOut: async () => {
+        console.log('🚪 Signing out user...')
+        console.log('🗑️ Clearing session from AsyncStorage...')
+        
         await supabase.auth.signOut()
+        
+        console.log('✅ User signed out successfully')
+        console.log('💡 User will need to log in again on next app open')
+        
         set({ session: null, user: null, profile: null })
     }
 }))
